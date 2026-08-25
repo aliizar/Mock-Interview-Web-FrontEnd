@@ -11,6 +11,10 @@ import AICoach from "./pages/AICoach";
 import ResumeAnalyzer from "./pages/resumeAnalyzer/ResumeAnalyzer";
 import Settings from "./pages/Settings";
 import StartInterview from "./pages/StartInterview";
+import ProtectedRoute from "./api/ProtectedRoute";
+import VerifyEmail from "./pages/VerifyEmail";
+import ForgotPassword from "./pages/Forgot-password";
+import ResetPassword from "./pages/Reset-password";
 function App() {
   return (
     <BrowserRouter>
@@ -27,35 +31,46 @@ function App() {
           path="/signup"
           element={<SignUp />}
         />
-        <Route element={<DashboardLayout />}>
-          <Route
-            path="/dashboard"
-            element={<Dashboard />}
-          />
-          <Route
-            path="/interview"
-            element={<Interview />}
-          />
-          <Route
-            path="/history"
-            element={<InterviewHistory />}
-          />
-          <Route
-            path="/details"
-            element={<InterviewDetails />}
-          />
-          <Route
-            path="/ai-coach"
-            element={<AICoach />}
-          />
-          <Route
-            path="/resume-review"
-            element={<ResumeAnalyzer />}
-          />
-          <Route
-            path="/settings"
-            element={<Settings />}
-          />
+        <Route
+          path="/verify-email"
+          element={<VerifyEmail />}
+        />
+        <Route
+          path="/forgot-password"
+          element={<ForgotPassword />}
+        />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route element={<ProtectedRoute />}>
+          <Route element={<DashboardLayout />}>
+            <Route
+              path="/dashboard"
+              element={<Dashboard />}
+            />
+            <Route
+              path="/interview"
+              element={<Interview />}
+            />
+            <Route
+              path="/history"
+              element={<InterviewHistory />}
+            />
+            <Route
+              path="/details"
+              element={<InterviewDetails />}
+            />
+            <Route
+              path="/ai-coach"
+              element={<AICoach />}
+            />
+            <Route
+              path="/resume-review"
+              element={<ResumeAnalyzer />}
+            />
+            <Route
+              path="/settings"
+              element={<Settings />}
+            />
+          </Route>
         </Route>
         <Route
           path="/interview/start"

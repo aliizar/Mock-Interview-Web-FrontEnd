@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate, } from "react-router-dom";
 
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -10,7 +10,9 @@ import PasswordInput from "../components/layouts/AuthLayouts/PasswordInput";
 import AuthButton from "../components/layouts/AuthLayouts/AuthButton";
 import Divider from "../components/ui/Divider";
 import GoogleButton from "../components/ui/GoogleButon";
-
+import { loginUser } from "../api/auth.api";
+import { useAuthStore } from "../stores/auth.store";
+import { useState } from "react";
 
 const loginSchema = z.object({
     email: z
@@ -26,6 +28,8 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export default function Login() {
+    const navigate = useNavigate();
+    const [loginError, setLoginError] = useState("");
     const {
         register,
         handleSubmit,
@@ -34,11 +38,29 @@ export default function Login() {
         resolver: zodResolver(loginSchema),
     });
 
-    const onSubmit = async (data: LoginForm) => {
-        console.log(data);
+    const setAuth = useAuthStore((state) => state.setAuth);
 
-        // TODO:
-        // await loginMutation(data)
+    const onSubmit = async (data: LoginForm) => {
+        setLoginError(""); // Reset login error before attempting login
+        try {
+            const result = await loginUser({
+                email: data.email,
+                password: data.password,
+            });
+
+            setAuth(result.token, result.user);
+
+            console.log("Login successful:", result);
+            navigate("/dashboard");
+        } catch (error) {
+            console.error("Login failed:", error);
+
+            if (error instanceof Error) {
+                setLoginError(error.message);
+            } else {
+                setLoginError("Invalid email or password");
+            }
+        }
     };
 
     return (
@@ -90,7 +112,11 @@ export default function Login() {
                         Sign In
                     </AuthButton>
                 </form>
-
+                {loginError && (
+                    <div className="rounded-lg border mt-4 border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                        {loginError}
+                    </div>
+                )}
                 <Divider />
 
                 <GoogleButton

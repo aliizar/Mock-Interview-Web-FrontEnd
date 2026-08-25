@@ -2,10 +2,12 @@ import { motion } from "framer-motion";
 import { Bot, LogOut } from "lucide-react";
 import { menuItems } from "../../data/menu";
 import { useNavigate, useLocation } from "react-router-dom";
-
+import { useAuthStore } from "../../stores/auth.store";
 export default function Sidebar() {
     const navigate = useNavigate();
     const location = useLocation();
+    const { user, logout } = useAuthStore();
+
     return (
         <aside className="w-72 h-screen bg-slate-900/80 backdrop-blur-xl border-r border-slate-800 px-6 py-8 flex flex-col">
 
@@ -72,17 +74,22 @@ export default function Sidebar() {
 
                         {/* Avatar */}
                         <div className="h-12 w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-indigo-500/20">
-                            AH
+                            {user?.name
+                                ?.split(" ")
+                                .map((word) => word[0])
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
                         </div>
 
                         {/* User Info */}
                         <div className="flex-1 min-w-0">
                             <h3 className="text-sm font-semibold text-white truncate">
-                                Ali Zar
+                                {user?.name || "Loading..."}
                             </h3>
 
                             <p className="text-xs text-slate-400 truncate">
-                                Computer Engineer
+                                {user?.email || "Loading..."}
                             </p>
                         </div>
                     </div>
@@ -97,7 +104,7 @@ export default function Sidebar() {
                 >
                     <LogOut size={20} />
 
-                    <span className="font-medium">
+                    <span className="font-medium" onClick={() => logout()}>
                         Logout
                     </span>
                 </motion.button>

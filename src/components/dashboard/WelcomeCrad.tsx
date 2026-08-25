@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "../../stores/auth.store";
 
 
 export default function WelcomeCard() {
     const navigate = useNavigate();
+    const { user } = useAuthStore();
     return (
 
         <motion.div
@@ -28,7 +30,7 @@ export default function WelcomeCard() {
                         </span>
                     </div>
                     <h1 className="text-4xl font-bold text-white leading-tight">
-                        Good Evening, Ali
+                        Good Evening, {user?.name}
                         <br />
                         Ready to ace your next interview?
                     </h1>

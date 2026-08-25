@@ -10,6 +10,8 @@ import PasswordInput from "../components/layouts/AuthLayouts/PasswordInput";
 import AuthButton from "../components/layouts/AuthLayouts/AuthButton";
 import Divider from "../components/ui/Divider";
 import GoogleButton from "../components/ui/GoogleButon";
+import { registerUser } from "../api/auth.api";
+import { useState } from "react";
 
 
 
@@ -40,6 +42,9 @@ const signupSchema = z
 type SignupForm = z.infer<typeof signupSchema>;
 
 export default function Signup() {
+    const [showBadge, setShowBadge] = useState(false);
+
+    const [signUpError, setSignUpError] = useState("");
     const {
         register,
         handleSubmit,
@@ -49,10 +54,24 @@ export default function Signup() {
     });
 
     const onSubmit = async (data: SignupForm) => {
-        console.log(data);
+        setSignUpError(""); // Reset sign-up error before attempting registration
+        try {
+            const result = await registerUser({
+                name: data.fullName,
+                email: data.email,
+                password: data.password,
+            });
+            setShowBadge(true);
+            console.log("Registration successful", showBadge, result);
+        } catch (error) {
+            console.error("Login failed:", error);
 
-        // TODO:
-        // await signupMutation(data)
+            if (error instanceof Error) {
+                setSignUpError(error.message);
+            } else {
+                setSignUpError("An error occurred during registration");
+            }
+        }
     };
 
     return (
@@ -102,6 +121,16 @@ export default function Signup() {
                         Create Account
                     </AuthButton>
                 </form>
+                {showBadge ? (
+                    <div className="mt-4 text-center text-green-500">
+                        Registration successful! Please check your email to verify your account.
+                    </div>
+                ) : null}
+                {signUpError && (
+                    <div className="rounded-lg border mt-4 border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                        {signUpError}
+                    </div>
+                )}
 
                 <Divider />
 
