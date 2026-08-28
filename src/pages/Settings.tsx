@@ -1,10 +1,10 @@
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
 import {
     User,
     Brain,
-    Settings as SettingsIcon,
-    Moon,
     Shield,
     LogOut,
     Save,
@@ -13,96 +13,147 @@ import {
     Lock,
 } from "lucide-react";
 import { useAuthStore } from "../stores/auth.store";
+import {
+    getPreferences,
+    updatePreferences,
+} from "../api/preferences.api";
+import { changePassword } from "../api/auth.api";
+
+interface PreferenceForm {
+    role: string;
+    difficulty: string;
+    interviewType: string;
+    duration: number;
+    rememberHistory: boolean;
+    recommendations: boolean;
+}
+
+interface PasswordForm {
+    currentPassword: string;
+    newPassword: string;
+    confirmPassword: string;
+}
 
 export default function Settings() {
-    const { user, logout } = useAuthStore();
+    const { user, logout, token } = useAuthStore();
 
-    const [name, setName] = useState(user?.name || "...");
-
-    const [role, setRole] = useState("Frontend Developer");
-    const [difficulty, setDifficulty] = useState("Intermediate");
-    const [interviewType, setInterviewType] = useState("Mixed");
-    const [duration, setDuration] = useState("30 Minutes");
-
-    const [rememberHistory, setRememberHistory] = useState(true);
-    const [recommendations, setRecommendations] = useState(true);
-
-    const [theme, setTheme] = useState("Dark Mode");
-
-    const [saved, setSaved] = useState(false);
+    const [loadingPreferences, setLoadingPreferences] = useState(true);
+    const [savingPreferences, setSavingPreferences] = useState(false);
+    const [preferenceMessage, setPreferenceMessage] = useState("");
+    const [preferenceError, setPreferenceError] = useState("");
 
     const [showPasswordForm, setShowPasswordForm] = useState(false);
-    const [currentPassword, setCurrentPassword] = useState("");
-    const [newPassword, setNewPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] = useState("");
-
-    const [passwordLoading, setPasswordLoading] = useState(false);
+    const [changingPassword, setChangingPassword] = useState(false);
     const [passwordMessage, setPasswordMessage] = useState("");
     const [passwordError, setPasswordError] = useState("");
 
-    const saveProfile = () => {
-        setSaved(true);
+    const {
+        register,
+        handleSubmit,
+        reset,
+    } = useForm<PreferenceForm>({
+        defaultValues: {
+            role: "Frontend Developer",
+            difficulty: "Intermediate",
+            interviewType: "Mixed",
+            duration: 30,
+            rememberHistory: true,
+            recommendations: true,
+        },
+    });
 
-        setTimeout(() => {
-            setSaved(false);
-        }, 2000);
+    const {
+        register: registerPassword,
+        handleSubmit: handlePasswordSubmit,
+        reset: resetPassword,
+        watch,
+        formState: { errors },
+    } = useForm<PasswordForm>();
+
+    const newPassword = watch("newPassword");
+
+    useEffect(() => {
+        const loadPreferences = async () => {
+            try {
+                setPreferenceError("");
+
+                const preferences = await getPreferences();
+
+                reset({
+                    role: preferences.role,
+                    difficulty: preferences.difficulty,
+                    interviewType: preferences.interviewType,
+                    duration: preferences.duration,
+                    rememberHistory: preferences.rememberHistory,
+                    recommendations: preferences.recommendations,
+                });
+            } catch (error) {
+                setPreferenceError(
+                    error instanceof Error
+                        ? error.message
+                        : "Failed to load preferences.",
+                );
+            } finally {
+                setLoadingPreferences(false);
+            }
+        };
+
+        loadPreferences();
+    }, [reset]);
+
+    const onPreferencesSubmit = async (data: PreferenceForm) => {
+        try {
+            setSavingPreferences(true);
+            setPreferenceMessage("");
+            setPreferenceError("");
+
+            await updatePreferences(data);
+
+            setPreferenceMessage(
+                "Interview preferences saved successfully.",
+            );
+        } catch (error) {
+            setPreferenceError(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to save preferences.",
+            );
+        } finally {
+            setSavingPreferences(false);
+        }
     };
 
-    const handleChangePassword = async (
-        e: React.FormEvent<HTMLFormElement>,
-    ) => {
-        e.preventDefault();
-
-        setPasswordError("");
-        setPasswordMessage("");
-
-        if (newPassword !== confirmPassword) {
+    const onPasswordSubmit = async (data: PasswordForm) => {
+        if (data.newPassword !== data.confirmPassword) {
             setPasswordError("Passwords do not match.");
             return;
         }
 
         try {
-            setPasswordLoading(true);
+            setChangingPassword(true);
+            setPasswordMessage("");
+            setPasswordError("");
 
-            const token = useAuthStore.getState().token;
-
-            const response = await fetch(
-                "http://localhost:5000/api/auth/v1/change-password",
-                {
-                    method: "PATCH",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        currentPassword,
-                        newPassword,
-                        confirmPassword,
-                    }),
-                },
+            const result = await changePassword(
+                token,
+                data.currentPassword,
+                data.newPassword,
+                data.confirmPassword,
             );
 
-            const data = await response.json();
+            setPasswordMessage(
+                result.message || "Password changed successfully.",
+            );
 
-            if (!response.ok) {
-                throw new Error(
-                    data.message || "Failed to change password",
-                );
-            }
-
-            setPasswordMessage(data.message);
-
-            setCurrentPassword("");
-            setNewPassword("");
-            setConfirmPassword("");
+            resetPassword();
         } catch (error) {
             setPasswordError(
                 error instanceof Error
                     ? error.message
-                    : "Something went wrong while changing your password.",
+                    : "Failed to change password.",
             );
         } finally {
-            setPasswordLoading(false);
+            setChangingPassword(false);
         }
     };
 
@@ -115,372 +166,425 @@ export default function Settings() {
         >
             {/* Header */}
             <div>
-                <h1 className="text-3xl font-bold text-white">Settings</h1>
+                <h1 className="text-3xl font-bold text-white">
+                    Settings
+                </h1>
 
                 <p className="mt-2 text-slate-400">
-                    Manage your account and AI interview preferences.
+                    Manage your account, interview preferences, and
+                    security.
                 </p>
             </div>
 
             {/* Profile */}
-            <SettingsCard
-                title="Profile Settings"
-                icon={<User size={20} />}
-            >
-                <div className="grid gap-5 md:grid-cols-2">
-                    <InputField
-                        label="Full Name"
-                        value={name}
-                        onChange={setName}
-                    />
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+                <div className="mb-6 flex items-center gap-3">
+                    <div className="rounded-lg bg-slate-800 p-2 text-indigo-400">
+                        <User size={20} />
+                    </div>
 
-                    <InputField
-                        label="Email"
-                        type="email"
-                        value={user?.email || "..."}
-                        disabled={true}
-                        className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-slate-400 outline-none"
-                    />
-                </div>
-
-                <button
-                    onClick={saveProfile}
-                    className="mt-6 flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-white transition hover:bg-indigo-500"
-                >
-                    <Save size={18} />
-
-                    {saved ? "Saved Successfully" : "Save Changes"}
-                </button>
-            </SettingsCard>
-
-            {/* Interview Preferences */}
-            <SettingsCard
-                title="Interview Preferences"
-                icon={<SettingsIcon size={20} />}
-            >
-                <div className="grid gap-5 md:grid-cols-2">
-                    <SelectField
-                        label="Default Role"
-                        value={role}
-                        setValue={setRole}
-                        options={[
-                            "Frontend Developer",
-                            "Backend Developer",
-                            "Full Stack Developer",
-                            "Data Analyst",
-                        ]}
-                    />
-
-                    <SelectField
-                        label="Difficulty"
-                        value={difficulty}
-                        setValue={setDifficulty}
-                        options={[
-                            "Beginner",
-                            "Intermediate",
-                            "Advanced",
-                        ]}
-                    />
-
-                    <SelectField
-                        label="Interview Type"
-                        value={interviewType}
-                        setValue={setInterviewType}
-                        options={[
-                            "Technical",
-                            "Behavioral",
-                            "HR",
-                            "Mixed",
-                        ]}
-                    />
-
-                    <SelectField
-                        label="Duration"
-                        value={duration}
-                        setValue={setDuration}
-                        options={[
-                            "10 Minutes",
-                            "20 Minutes",
-                            "30 Minutes",
-                        ]}
-                    />
-                </div>
-            </SettingsCard>
-
-            {/* AI Preferences */}
-            <SettingsCard
-                title="AI Assistant Preferences"
-                icon={<Brain size={20} />}
-            >
-                <div className="space-y-4">
-                    <ToggleItem
-                        icon={<History size={18} />}
-                        title="Remember Interview History"
-                        description="Allow AI to track previous interviews."
-                        enabled={rememberHistory}
-                        setEnabled={setRememberHistory}
-                    />
-
-                    <ToggleItem
-                        icon={<Bell size={18} />}
-                        title="AI Recommendations"
-                        description="Receive personalized improvement suggestions."
-                        enabled={recommendations}
-                        setEnabled={setRecommendations}
-                    />
-                </div>
-            </SettingsCard>
-
-            {/* Appearance */}
-            <SettingsCard
-                title="Appearance"
-                icon={<Moon size={20} />}
-            >
-                <div className="flex flex-col gap-4 rounded-xl bg-slate-800 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                        <h3 className="font-medium text-white">
-                            Theme
-                        </h3>
+                        <h2 className="text-lg font-semibold text-white">
+                            Profile
+                        </h2>
 
                         <p className="text-sm text-slate-400">
-                            Choose application appearance
+                            Your account information.
                         </p>
                     </div>
-
-                    <select
-                        value={theme}
-                        onChange={(e) => setTheme(e.target.value)}
-                        className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-white outline-none"
-                    >
-                        <option>Dark Mode</option>
-                        <option>Light Mode</option>
-                    </select>
                 </div>
-            </SettingsCard>
 
-            {/* Security */}
-            <SettingsCard
-                title="Security"
-                icon={<Shield size={20} />}
-            >
-                <div className="space-y-5">
-                    <div className="flex flex-col gap-4 sm:flex-row">
-                        <button
-                            onClick={() => {
-                                setShowPasswordForm(!showPasswordForm);
-                                setPasswordError("");
-                                setPasswordMessage("");
-                            }}
-                            className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 px-5 py-3 text-slate-300 transition hover:bg-slate-800"
-                        >
-                            <Lock size={18} />
+                <div className="grid gap-5 md:grid-cols-2">
+                    <div>
+                        <label className="mb-2 block text-sm text-slate-400">
+                            Full Name
+                        </label>
 
-                            {showPasswordForm
-                                ? "Cancel"
-                                : "Change Password"}
-                        </button>
-
-                        <button
-                            onClick={() => logout()}
-                            className="flex items-center justify-center gap-2 rounded-xl bg-red-500/10 px-5 py-3 text-red-400 transition hover:bg-red-500/20"
-                        >
-                            <LogOut size={18} />
-                            Logout
-                        </button>
+                        <input
+                            type="text"
+                            value={user?.name || ""}
+                            readOnly
+                            className="w-full cursor-not-allowed rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-slate-400 outline-none"
+                        />
                     </div>
 
-                    {/* Change Password Form */}
-                    {showPasswordForm && (
-                        <form
-                            onSubmit={handleChangePassword}
-                            className="space-y-5 rounded-xl border border-slate-800 bg-slate-950/50 p-5"
-                        >
-                            <div>
-                                <h3 className="font-medium text-white">
-                                    Change your password
-                                </h3>
+                    <div>
+                        <label className="mb-2 block text-sm text-slate-400">
+                            Email
+                        </label>
 
-                                <p className="mt-1 text-sm text-slate-400">
-                                    Enter your current password and
-                                    choose a new one.
-                                </p>
+                        <input
+                            type="email"
+                            value={user?.email || ""}
+                            readOnly
+                            className="w-full cursor-not-allowed rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-slate-400 outline-none"
+                        />
+                    </div>
+                </div>
+            </section>
+
+            {/* Interview Preferences */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+                <div className="mb-6 flex items-center gap-3">
+                    <div className="rounded-lg bg-slate-800 p-2 text-indigo-400">
+                        <Brain size={20} />
+                    </div>
+
+                    <div>
+                        <h2 className="text-lg font-semibold text-white">
+                            Interview Preferences
+                        </h2>
+
+                        <p className="text-sm text-slate-400">
+                            Configure how your AI interviews should
+                            be generated.
+                        </p>
+                    </div>
+                </div>
+
+                {loadingPreferences ? (
+                    <p className="text-slate-400">
+                        Loading preferences...
+                    </p>
+                ) : (
+                    <form
+                        onSubmit={handleSubmit(onPreferencesSubmit)}
+                        className="space-y-6"
+                    >
+                        <div className="grid gap-5 md:grid-cols-2">
+                            <div>
+                                <label className="mb-2 block text-sm text-slate-400">
+                                    Default Role
+                                </label>
+
+                                <select
+                                    {...register("role")}
+                                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-indigo-500"
+                                >
+                                    <option>
+                                        Frontend Developer
+                                    </option>
+                                    <option>
+                                        Backend Developer
+                                    </option>
+                                    <option>
+                                        Full Stack Developer
+                                    </option>
+                                    <option>
+                                        Data Analyst
+                                    </option>
+                                </select>
                             </div>
 
-                            <InputField
-                                label="Current Password"
-                                value={currentPassword}
-                                onChange={setCurrentPassword}
-                                type="password"
-                            />
+                            <div>
+                                <label className="mb-2 block text-sm text-slate-400">
+                                    Difficulty
+                                </label>
 
-                            <InputField
-                                label="New Password"
-                                value={newPassword}
-                                onChange={setNewPassword}
-                                type="password"
-                            />
+                                <select
+                                    {...register("difficulty")}
+                                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-indigo-500"
+                                >
+                                    <option>Beginner</option>
+                                    <option>Intermediate</option>
+                                    <option>Advanced</option>
+                                </select>
+                            </div>
 
-                            <InputField
-                                label="Confirm New Password"
-                                value={confirmPassword}
-                                onChange={setConfirmPassword}
-                                type="password"
-                            />
+                            <div>
+                                <label className="mb-2 block text-sm text-slate-400">
+                                    Interview Type
+                                </label>
 
-                            {passwordError && (
-                                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
-                                    {passwordError}
+                                <select
+                                    {...register("interviewType")}
+                                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-indigo-500"
+                                >
+                                    <option>Technical</option>
+                                    <option>Behavioral</option>
+                                    <option>HR</option>
+                                    <option>Mixed</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm text-slate-400">
+                                    Duration
+                                </label>
+
+                                <select
+                                    {...register("duration", {
+                                        valueAsNumber: true,
+                                    })}
+                                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-indigo-500"
+                                >
+                                    <option value={10}>
+                                        10 Minutes
+                                    </option>
+                                    <option value={20}>
+                                        20 Minutes
+                                    </option>
+                                    <option value={30}>
+                                        30 Minutes
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <label className="flex cursor-pointer items-center justify-between rounded-xl bg-slate-800 p-4">
+                                <div className="flex items-center gap-3">
+                                    <History
+                                        size={18}
+                                        className="text-indigo-400"
+                                    />
+
+                                    <div>
+                                        <p className="text-white">
+                                            Remember Interview History
+                                        </p>
+
+                                        <p className="text-sm text-slate-400">
+                                            Allow AI to track previous
+                                            interviews.
+                                        </p>
+                                    </div>
                                 </div>
-                            )}
 
-                            {passwordMessage && (
-                                <div className="rounded-xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400">
-                                    {passwordMessage}
+                                <input
+                                    type="checkbox"
+                                    {...register("rememberHistory")}
+                                    className="h-5 w-5 accent-indigo-500"
+                                />
+                            </label>
+
+                            <label className="flex cursor-pointer items-center justify-between rounded-xl bg-slate-800 p-4">
+                                <div className="flex items-center gap-3">
+                                    <Bell
+                                        size={18}
+                                        className="text-indigo-400"
+                                    />
+
+                                    <div>
+                                        <p className="text-white">
+                                            AI Recommendations
+                                        </p>
+
+                                        <p className="text-sm text-slate-400">
+                                            Receive personalized
+                                            improvement suggestions.
+                                        </p>
+                                    </div>
                                 </div>
-                            )}
 
-                            <button
-                                type="submit"
-                                disabled={passwordLoading}
-                                className="rounded-xl bg-indigo-600 px-5 py-3 font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                                {passwordLoading
-                                    ? "Changing Password..."
-                                    : "Update Password"}
-                            </button>
-                        </form>
-                    )}
+                                <input
+                                    type="checkbox"
+                                    {...register("recommendations")}
+                                    className="h-5 w-5 accent-indigo-500"
+                                />
+                            </label>
+                        </div>
+
+                        {preferenceError && (
+                            <p className="rounded-xl bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                                {preferenceError}
+                            </p>
+                        )}
+
+                        {preferenceMessage && (
+                            <p className="rounded-xl bg-green-500/10 px-4 py-3 text-sm text-green-400">
+                                {preferenceMessage}
+                            </p>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={savingPreferences}
+                            className="flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <Save size={18} />
+
+                            {savingPreferences
+                                ? "Saving..."
+                                : "Save Preferences"}
+                        </button>
+                    </form>
+                )}
+            </section>
+
+            {/* Security */}
+            <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+                <div className="mb-6 flex items-center gap-3">
+                    <div className="rounded-lg bg-slate-800 p-2 text-indigo-400">
+                        <Shield size={20} />
+                    </div>
+
+                    <div>
+                        <h2 className="text-lg font-semibold text-white">
+                            Security
+                        </h2>
+
+                        <p className="text-sm text-slate-400">
+                            Manage your account password and session.
+                        </p>
+                    </div>
                 </div>
-            </SettingsCard>
+
+                <div className="flex flex-col gap-4 sm:flex-row">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowPasswordForm(!showPasswordForm);
+                            setPasswordError("");
+                            setPasswordMessage("");
+                        }}
+                        className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 px-5 py-3 text-slate-300 transition hover:bg-slate-800"
+                    >
+                        <Lock size={18} />
+
+                        {showPasswordForm
+                            ? "Cancel"
+                            : "Change Password"}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={logout}
+                        className="flex items-center justify-center gap-2 rounded-xl bg-red-500/10 px-5 py-3 text-red-400 transition hover:bg-red-500/20"
+                    >
+                        <LogOut size={18} />
+                        Logout
+                    </button>
+                </div>
+
+                {showPasswordForm && (
+                    <form
+                        onSubmit={handlePasswordSubmit(
+                            onPasswordSubmit,
+                        )}
+                        className="mt-6 space-y-5 rounded-xl bg-slate-800 p-5"
+                    >
+                        <div>
+                            <h3 className="font-medium text-white">
+                                Change Password
+                            </h3>
+
+                            <p className="mt-1 text-sm text-slate-400">
+                                Enter your current password and choose
+                                a new one.
+                            </p>
+                        </div>
+
+                        <div>
+                            <label className="mb-2 block text-sm text-slate-400">
+                                Current Password
+                            </label>
+
+                            <input
+                                type="password"
+                                {...registerPassword(
+                                    "currentPassword",
+                                    {
+                                        required:
+                                            "Current password is required",
+                                    },
+                                )}
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-indigo-500"
+                            />
+
+                            {errors.currentPassword && (
+                                <p className="mt-1 text-sm text-red-400">
+                                    {
+                                        errors.currentPassword
+                                            .message
+                                    }
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="mb-2 block text-sm text-slate-400">
+                                New Password
+                            </label>
+
+                            <input
+                                type="password"
+                                {...registerPassword(
+                                    "newPassword",
+                                    {
+                                        required:
+                                            "New password is required",
+                                        minLength: {
+                                            value: 8,
+                                            message:
+                                                "Password must be at least 8 characters",
+                                        },
+                                    },
+                                )}
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-indigo-500"
+                            />
+
+                            {errors.newPassword && (
+                                <p className="mt-1 text-sm text-red-400">
+                                    {errors.newPassword.message}
+                                </p>
+                            )}
+                        </div>
+
+                        <div>
+                            <label className="mb-2 block text-sm text-slate-400">
+                                Confirm New Password
+                            </label>
+
+                            <input
+                                type="password"
+                                {...registerPassword(
+                                    "confirmPassword",
+                                    {
+                                        required:
+                                            "Please confirm your new password",
+                                        validate: (value) =>
+                                            value === newPassword ||
+                                            "Passwords do not match",
+                                    },
+                                )}
+                                className="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-indigo-500"
+                            />
+
+                            {errors.confirmPassword && (
+                                <p className="mt-1 text-sm text-red-400">
+                                    {
+                                        errors.confirmPassword
+                                            .message
+                                    }
+                                </p>
+                            )}
+                        </div>
+
+                        {passwordError && (
+                            <p className="rounded-xl bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                                {passwordError}
+                            </p>
+                        )}
+
+                        {passwordMessage && (
+                            <p className="rounded-xl bg-green-500/10 px-4 py-3 text-sm text-green-400">
+                                {passwordMessage}
+                            </p>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={changingPassword}
+                            className="rounded-xl bg-indigo-600 px-5 py-3 text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {changingPassword
+                                ? "Updating..."
+                                : "Update Password"}
+                        </button>
+                    </form>
+                )}
+            </section>
         </motion.div>
-    );
-}
-
-function SettingsCard({
-    title,
-    icon,
-    children,
-}: {
-    title: string;
-    icon: React.ReactNode;
-    children: React.ReactNode;
-}) {
-    return (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-            <div className="mb-6 flex items-center gap-3 text-white">
-                <div className="rounded-lg bg-slate-800 p-2 text-indigo-400">
-                    {icon}
-                </div>
-
-                <h2 className="text-lg font-semibold">{title}</h2>
-            </div>
-
-            {children}
-        </div>
-    );
-}
-
-function InputField({
-    label,
-    value,
-    onChange,
-    type = "text",
-    disabled = false,
-    className,
-}: {
-    label: string;
-    value: string;
-    onChange?: (value: string) => void;
-    type?: string;
-    disabled?: boolean;
-    className?: string;
-}) {
-    return (
-        <div>
-            <label className="mb-2 block text-sm text-slate-400">
-                {label}
-            </label>
-
-            <input
-                type={type}
-                value={value}
-                onChange={(e) => onChange?.(e.target.value)}
-                disabled={disabled}
-                className={className ?? "w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-indigo-500"}
-            />
-        </div>
-    );
-}
-
-function SelectField({
-    label,
-    value,
-    setValue,
-    options,
-}: {
-    label: string;
-    value: string;
-    setValue: (value: string) => void;
-    options: string[];
-}) {
-    return (
-        <div>
-            <label className="mb-2 block text-sm text-slate-400">
-                {label}
-            </label>
-
-            <select
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none"
-            >
-                {options.map((option) => (
-                    <option key={option}>{option}</option>
-                ))}
-            </select>
-        </div>
-    );
-}
-
-function ToggleItem({
-    icon,
-    title,
-    description,
-    enabled,
-    setEnabled,
-}: {
-    icon: React.ReactNode;
-    title: string;
-    description: string;
-    enabled: boolean;
-    setEnabled: (value: boolean) => void;
-}) {
-    return (
-        <div className="flex items-center justify-between rounded-xl bg-slate-800 p-4">
-            <div className="flex gap-3">
-                <div className="text-indigo-400">
-                    {icon}
-                </div>
-
-                <div>
-                    <h3 className="text-white">{title}</h3>
-
-                    <p className="text-sm text-slate-400">
-                        {description}
-                    </p>
-                </div>
-            </div>
-
-            <button
-                onClick={() => setEnabled(!enabled)}
-                className={`h-6 w-11 rounded-full p-1 transition ${enabled ? "bg-indigo-500" : "bg-slate-600"
-                    }`}
-            >
-                <div
-                    className={`h-4 w-4 rounded-full bg-white transition ${enabled ? "translate-x-5" : "translate-x-0"
-                        }`}
-                />
-            </button>
-        </div>
     );
 }
