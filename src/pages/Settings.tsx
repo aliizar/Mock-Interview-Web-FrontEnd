@@ -53,7 +53,7 @@ export default function Settings() {
         reset,
     } = useForm<PreferenceForm>({
         defaultValues: {
-            role: "Frontend Developer",
+            role: "Select Role!",
             difficulty: "Intermediate",
             interviewType: "Mixed",
             duration: 30,
@@ -257,23 +257,14 @@ export default function Settings() {
                                     Default Role
                                 </label>
 
-                                <select
-                                    {...register("role")}
-                                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none focus:border-indigo-500"
-                                >
-                                    <option>
-                                        Frontend Developer
-                                    </option>
-                                    <option>
-                                        Backend Developer
-                                    </option>
-                                    <option>
-                                        Full Stack Developer
-                                    </option>
-                                    <option>
-                                        Data Analyst
-                                    </option>
-                                </select>
+                                <input
+                                    type="text"
+                                    {...register("role", {
+                                        required: "Please enter a job role",
+                                    })}
+                                    placeholder="e.g. Frontend Developer"
+                                    className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white outline-none placeholder:text-slate-500 focus:border-indigo-500"
+                                />
                             </div>
 
                             <div>

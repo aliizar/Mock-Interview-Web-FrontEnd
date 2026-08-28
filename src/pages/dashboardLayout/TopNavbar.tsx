@@ -7,10 +7,10 @@ import {
     LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../../stores/auth.store";
-
+import { getPreferences } from "../../api/preferences.api";
 export default function TopNavbar() {
     const navigate = useNavigate();
     const { user, logout } = useAuthStore();
@@ -18,6 +18,7 @@ export default function TopNavbar() {
     const [showSearch, setShowSearch] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
     const [showProfile, setShowProfile] = useState(false);
+    const [userRole, setUserRole] = useState("...");
 
     const searchItems = [
         "Frontend Developer Interview",
@@ -40,6 +41,19 @@ export default function TopNavbar() {
             message: "Practice React questions",
         },
     ];
+
+    useEffect(() => {
+        const loadUserRole = async () => {
+            try {
+                const preferences = await getPreferences();
+                setUserRole(preferences.role);
+            } catch (error) {
+                console.error("Failed to load user role:", error);
+            }
+        };
+
+        loadUserRole();
+    }, []);
 
     return (
         <header className="flex h-20 items-center justify-between border-b border-slate-800 bg-slate-950/70 px-8 backdrop-blur-xl">
@@ -140,7 +154,7 @@ export default function TopNavbar() {
 
                         <div className="hidden text-left lg:block">
                             <p className="text-sm font-medium text-white">{user?.name}</p>
-                            <p className="text-xs text-slate-400">{user?.email}</p>
+                            <p className="text-xs text-slate-400">{userRole}</p>
                         </div>
 
                         <ChevronDown size={18} className="text-slate-400" />
