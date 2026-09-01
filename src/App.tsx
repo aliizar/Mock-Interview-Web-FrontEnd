@@ -55,7 +55,7 @@ function App() {
               element={<InterviewHistory />}
             />
             <Route
-              path="/details"
+              path="/interviews/:id"
               element={<InterviewDetails />}
             />
             <Route

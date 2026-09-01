@@ -1,4 +1,3 @@
-
 import {
     Sparkles,
     Briefcase,
@@ -16,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import SystemStatus from "../components/interview/SystemStatus";
 import AIInstructions from "../components/interview/AIInstructions";
 import { getPreferences } from "../api/preferences.api";
+import { useAuthStore } from "../stores/auth.store";
 
 interface InterviewForm {
     role: string;
@@ -25,17 +25,38 @@ interface InterviewForm {
     description: string;
 }
 
+interface StartInterviewResponse {
+    message: string;
+    interview: {
+        id: number;
+        role: string;
+        difficulty: string;
+        interviewType: string;
+        duration: number;
+        startedAt: string;
+        status: string;
+    };
+    question: {
+        id: number;
+        questionNumber: number;
+        question: string;
+        type: string;
+    };
+}
+
+const API_URL = "http://localhost:5000/api/interviews/v1";
+
 export default function Interview() {
     const navigate = useNavigate();
 
     const [showPreferenceDialog, setShowPreferenceDialog] = useState(true);
     const [loadingPreferences, setLoadingPreferences] = useState(false);
+    const [startingInterview, setStartingInterview] = useState(false);
+    const [error, setError] = useState("");
 
-    const {
-        register,
-        handleSubmit,
-        reset,
-    } = useForm<InterviewForm>({
+    const { token } = useAuthStore();
+
+    const { register, handleSubmit, reset } = useForm<InterviewForm>({
         defaultValues: {
             role: "",
             difficulty: "",
@@ -48,6 +69,7 @@ export default function Interview() {
     const usePreferences = async () => {
         try {
             setLoadingPreferences(true);
+            setError("");
 
             const preferences = await getPreferences();
 
@@ -67,6 +89,7 @@ export default function Interview() {
             setShowPreferenceDialog(false);
         } catch (error) {
             console.error("Failed to load interview preferences:", error);
+            setError("Failed to load your interview preferences.");
         } finally {
             setLoadingPreferences(false);
         }
@@ -76,12 +99,64 @@ export default function Interview() {
         setShowPreferenceDialog(false);
     };
 
-    const onSubmit = (data: InterviewForm) => {
-        console.log("Interview setup:", data);
+    const onSubmit = async (data: InterviewForm) => {
+        try {
+            setStartingInterview(true);
+            setError("");
 
-        navigate("/interview/start", {
-            state: data,
-        });
+            if (!token) {
+                setError("You are not authenticated. Please log in again.");
+                return;
+            }
+
+            const duration = Number.parseInt(data.duration, 10);
+
+            const response = await fetch(`${API_URL}/start`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify({
+                    role: data.role,
+                    difficulty: data.difficulty,
+                    interviewType: data.type,
+                    duration,
+                }),
+            });
+
+            const result: StartInterviewResponse | { message: string } =
+                await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    "message" in result
+                        ? result.message
+                        : "Failed to start interview",
+                );
+            }
+
+            const interviewResult = result as StartInterviewResponse;
+
+            console.log("Interview started:", interviewResult);
+
+            navigate("/interview/start", {
+                state: {
+                    interview: interviewResult.interview,
+                    question: interviewResult.question,
+                },
+            });
+        } catch (error) {
+            console.error("Failed to start interview:", error);
+
+            setError(
+                error instanceof Error
+                    ? error.message
+                    : "Failed to start interview. Please try again.",
+            );
+        } finally {
+            setStartingInterview(false);
+        }
     };
 
     return (
@@ -167,6 +242,13 @@ export default function Interview() {
                     personalized interview experience.
                 </p>
             </motion.div>
+
+            {/* Error */}
+            {error && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                    {error}
+                </div>
+            )}
 
             {/* Main Grid */}
             <div className="grid gap-8 lg:grid-cols-3">
@@ -266,9 +348,7 @@ export default function Interview() {
                                         Behavioral
                                     </option>
 
-                                    <option value="HR">
-                                        HR
-                                    </option>
+                                    <option value="HR">HR</option>
 
                                     <option value="Mixed">
                                         Mixed
@@ -329,10 +409,14 @@ export default function Interview() {
                         {/* Button */}
                         <button
                             type="submit"
-                            className="flex w-full items-center justify-center gap-3 rounded-xl bg-indigo-500 py-4 text-lg font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-600"
+                            disabled={startingInterview}
+                            className="flex w-full items-center justify-center gap-3 rounded-xl bg-indigo-500 py-4 text-lg font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-600 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <Play size={20} />
-                            Start AI Interview
+
+                            {startingInterview
+                                ? "Starting Interview..."
+                                : "Start AI Interview"}
                         </button>
                     </form>
                 </motion.div>
