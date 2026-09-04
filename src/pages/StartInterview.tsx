@@ -1,7 +1,6 @@
-
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
     Bot,
@@ -12,6 +11,11 @@ import {
     LogOut,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import {
+    endInterview,
+    evaluateInterview,
+    submitInterviewAnswer,
+} from "../api/interview.api";
 import { useAuthStore } from "../stores/auth.store";
 
 interface Interview {
@@ -36,18 +40,8 @@ interface LocationState {
     question: InterviewQuestion;
 }
 
-interface SubmitAnswerResponse {
-    message: string;
-    interviewEnded?: boolean;
-    interview?: {
-        id: number;
-        status: string;
-        endedAt: string;
-    };
-    question?: InterviewQuestion;
-}
-
-const API_URL = "http://localhost:5000/api/interviews/v1";
+const FAILURE_MESSAGE =
+    "Sorry for the inconvenience. Your interview could not be completed. Please try again later.";
 
 export default function StartInterview() {
     const location = useLocation();
@@ -60,6 +54,7 @@ export default function StartInterview() {
     const videoRef = useRef<HTMLVideoElement | null>(null);
     const recognitionRef = useRef<any>(null);
     const streamRef = useRef<MediaStream | null>(null);
+    const finishingRef = useRef(false);
 
     const [currentQuestion, setCurrentQuestion] =
         useState<InterviewQuestion | null>(
@@ -74,25 +69,65 @@ export default function StartInterview() {
             : 0,
     );
     const [cameraReady, setCameraReady] = useState(false);
-    const [submitted, setSubmitted] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [finishing, setFinishing] = useState(false);
+    const [failed, setFailed] = useState(false);
     const [error, setError] = useState("");
 
-    /*
-     * If the user somehow opens /interview/start directly
-     * without coming from the setup page.
-     */
     useEffect(() => {
         if (!state?.interview || !state?.question) {
             navigate("/interview", { replace: true });
         }
     }, [state, navigate]);
 
-    /*
-     * Timer
-     */
+    const finishInterview = useCallback(async () => {
+        if (!state?.interview || !token) {
+            setFailed(true);
+            setError(FAILURE_MESSAGE);
+            return;
+        }
+
+        if (finishingRef.current) {
+            return;
+        }
+
+        try {
+            finishingRef.current = true;
+
+            setFinishing(true);
+            setError("");
+
+            window.speechSynthesis.cancel();
+            recognitionRef.current?.stop();
+            recognitionRef.current = null;
+            setListening(false);
+
+            await endInterview(state.interview.id);
+
+            navigate(`/interviews/${state.interview.id}`, {
+                replace: true,
+            });
+        } catch (error) {
+            console.error(
+                "Failed to finish interview:",
+                error,
+            );
+
+            setFailed(true);
+            setError(FAILURE_MESSAGE);
+
+            finishingRef.current = false;
+            setFinishing(false);
+        }
+    }, [state, token, navigate]);
+
     useEffect(() => {
-        if (!state?.interview) {
+        if (
+            !state?.interview ||
+            finishing ||
+            failed ||
+            submitting
+        ) {
             return;
         }
 
@@ -108,11 +143,14 @@ export default function StartInterview() {
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [state?.interview]);
+    }, [
+        state?.interview,
+        finishing,
+        failed,
+        submitting,
+        finishInterview,
+    ]);
 
-    /*
-     * Camera
-     */
     useEffect(() => {
         async function startCamera() {
             try {
@@ -146,11 +184,8 @@ export default function StartInterview() {
         };
     }, []);
 
-    /*
-     * Speak current AI question
-     */
     useEffect(() => {
-        if (!currentQuestion) {
+        if (!currentQuestion || failed) {
             return;
         }
 
@@ -167,19 +202,16 @@ export default function StartInterview() {
         return () => {
             window.speechSynthesis.cancel();
         };
-    }, [currentQuestion]);
+    }, [currentQuestion, failed]);
 
-    /*
-     * Speech Recognition
-     */
     function startListening() {
         const SpeechRecognition =
             (window as any).SpeechRecognition ||
             (window as any).webkitSpeechRecognition;
 
         if (!SpeechRecognition) {
-            alert(
-                "Speech recognition is not supported. Use Chrome.",
+            setError(
+                "Speech recognition is not supported. Please use Chrome.",
             );
             return;
         }
@@ -221,21 +253,29 @@ export default function StartInterview() {
         setListening(false);
     }
 
-    /*
-     * Submit answer to backend
-     */
     async function submitAnswer() {
-        if (!state?.interview || !currentQuestion) {
+        if (
+            !state?.interview ||
+            !currentQuestion ||
+            failed
+        ) {
             return;
         }
 
         if (!answer.trim()) {
-            setError("Please provide an answer before submitting.");
+            setError(
+                "Please provide an answer before submitting.",
+            );
             return;
         }
 
         if (!token) {
-            setError("You are not authenticated.");
+            setFailed(true);
+            setError(FAILURE_MESSAGE);
+            return;
+        }
+
+        if (finishingRef.current) {
             return;
         }
 
@@ -245,44 +285,37 @@ export default function StartInterview() {
 
             stopListening();
 
-            const response = await fetch(
-                `${API_URL}/${state.interview.id}/answer`,
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
-                    body: JSON.stringify({
-                        answer: answer.trim(),
-                    }),
-                },
+            const remainingSeconds = time;
+
+            const result = await submitInterviewAnswer(
+                state.interview.id,
+                answer.trim(),
+                remainingSeconds,
             );
 
-            const result: SubmitAnswerResponse = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result.message ||
-                    "Failed to submit answer",
-                );
-            }
-
-            /*
-             * Backend says interview is finished.
-             */
             if (result.interviewEnded) {
-                await evaluateInterview();
+                try {
+                    await evaluateInterview(state.interview.id);
+
+                    navigate(`/interviews/${state.interview.id}`, {
+                        replace: true,
+                    });
+                } catch (error) {
+                    console.error(
+                        "Failed to evaluate completed interview:",
+                        error,
+                    );
+
+                    setFailed(true);
+                    setError(FAILURE_MESSAGE);
+                }
+
                 return;
             }
 
-            /*
-             * Backend generated the next question.
-             */
             if (result.question) {
                 setCurrentQuestion(result.question);
                 setAnswer("");
-                setSubmitted(false);
             }
         } catch (error) {
             console.error(
@@ -290,64 +323,30 @@ export default function StartInterview() {
                 error,
             );
 
-            setError(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to submit answer.",
-            );
+            setFailed(true);
+            setError(FAILURE_MESSAGE);
+
+            window.speechSynthesis.cancel();
+            recognitionRef.current?.stop();
+            recognitionRef.current = null;
+            setListening(false);
         } finally {
             setSubmitting(false);
         }
     }
 
-    /*
-     * Evaluate completed interview
-     */
-    async function evaluateInterview() {
-        if (!state?.interview || !token) {
+    async function handleEndInterview() {
+        if (submitting || finishing || failed) {
             return;
         }
 
-        try {
-            setError("");
+        await finishInterview();
+    }
 
-            const response = await fetch(
-                `${API_URL}/${state.interview.id}/evaluate`,
-                {
-                    method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        "Content-Type": "application/json",
-                    },
-                },
-            );
-
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(
-                    result.message ||
-                    "Failed to evaluate interview",
-                );
-            }
-
-            /*
-             * Evaluation is now saved in Neon.
-             * Navigate to details page.
-             */
-            navigate(`/interviews/${state.interview.id}`);
-        } catch (error) {
-            console.error(
-                "Failed to evaluate interview:",
-                error,
-            );
-
-            setError(
-                error instanceof Error
-                    ? error.message
-                    : "Failed to evaluate interview.",
-            );
-        }
+    function handleExit() {
+        navigate("/dashboard", {
+            replace: true,
+        });
     }
 
     function formatTime(seconds: number) {
@@ -367,7 +366,6 @@ export default function StartInterview() {
 
     return (
         <div className="flex min-h-screen flex-col bg-slate-950 text-white">
-            {/* Header */}
             <div className="flex h-20 items-center justify-between border-b border-slate-800 px-8">
                 <div>
                     <h1 className="text-xl font-semibold">
@@ -390,38 +388,44 @@ export default function StartInterview() {
                         {currentQuestion.questionNumber}
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={() =>
-                            navigate("/dashboard")
-                        }
-                        className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2 text-red-400 transition hover:bg-red-500/20"
-                    >
-                        <LogOut size={18} />
-                        Exit
-                    </button>
+                    {failed ? (
+                        <button
+                            type="button"
+                            onClick={handleExit}
+                            className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2 text-red-400 transition hover:bg-red-500/20"
+                        >
+                            <LogOut size={18} />
+                            Exit
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={handleEndInterview}
+                            disabled={
+                                submitting || finishing
+                            }
+                            className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2 text-red-400 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            <LogOut size={18} />
+
+                            {finishing
+                                ? "Ending..."
+                                : "End Interview"}
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Error */}
             {error && (
                 <div className="mx-8 mt-6 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
                     {error}
                 </div>
             )}
 
-            {/* Main */}
             <div className="grid flex-1 gap-8 p-8 lg:grid-cols-2">
-                {/* AI Question */}
                 <motion.div
-                    initial={{
-                        opacity: 0,
-                        x: -20,
-                    }}
-                    animate={{
-                        opacity: 1,
-                        x: 0,
-                    }}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
                     className="rounded-2xl border border-slate-800 bg-slate-900 p-8"
                 >
                     <div className="mb-8 flex items-center gap-4">
@@ -435,7 +439,9 @@ export default function StartInterview() {
                             </h2>
 
                             <p className="text-sm text-slate-400">
-                                Asking Question...
+                                {failed
+                                    ? "Interview failed"
+                                    : "Asking Question..."}
                             </p>
                         </div>
                     </div>
@@ -452,16 +458,9 @@ export default function StartInterview() {
                     </div>
                 </motion.div>
 
-                {/* Candidate */}
                 <motion.div
-                    initial={{
-                        opacity: 0,
-                        x: 20,
-                    }}
-                    animate={{
-                        opacity: 1,
-                        x: 0,
-                    }}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
                     className="rounded-2xl border border-slate-800 bg-slate-900 p-8"
                 >
                     <div className="h-64 overflow-hidden rounded-xl bg-slate-800">
@@ -485,7 +484,11 @@ export default function StartInterview() {
                             setAnswer(event.target.value)
                         }
                         placeholder="Your answer will appear here..."
-                        disabled={submitting}
+                        disabled={
+                            submitting ||
+                            finishing ||
+                            failed
+                        }
                         className="mt-5 h-28 w-full resize-none rounded-xl border border-slate-700 bg-slate-800 p-4 outline-none focus:border-indigo-500 disabled:opacity-60"
                     />
 
@@ -497,7 +500,11 @@ export default function StartInterview() {
                                     ? stopListening
                                     : startListening
                             }
-                            disabled={submitting}
+                            disabled={
+                                submitting ||
+                                finishing ||
+                                failed
+                            }
                             className="flex items-center justify-center gap-2 rounded-xl bg-slate-800 py-3 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             {listening ? (
@@ -516,6 +523,8 @@ export default function StartInterview() {
                             onClick={submitAnswer}
                             disabled={
                                 submitting ||
+                                finishing ||
+                                failed ||
                                 !answer.trim()
                             }
                             className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
@@ -527,15 +536,8 @@ export default function StartInterview() {
                                 : "Submit"}
                         </button>
                     </div>
-
-                    {submitted && (
-                        <div className="mt-4 rounded-xl bg-slate-800 p-3 text-center text-sm text-slate-400">
-                            Answer submitted.
-                        </div>
-                    )}
                 </motion.div>
             </div>
         </div>
     );
 }
-

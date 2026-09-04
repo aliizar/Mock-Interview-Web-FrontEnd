@@ -10,27 +10,8 @@ export interface InterviewHistoryItem {
   duration: number;
   startedAt: string;
   endedAt: string | null;
-  status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+  status: "ACTIVE" | "COMPLETED" | "CANCELLED" | "FAILED";
   overallScore: number | null;
-}
-
-export async function getInterviewHistory(): Promise<InterviewHistoryItem[]> {
-  const token = useAuthStore.getState().token;
-
-  const response = await fetch(`${API_URL}/history`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch interview history");
-  }
-
-  return data.interviews;
 }
 
 export interface InterviewQuestion {
@@ -38,10 +19,10 @@ export interface InterviewQuestion {
   questionNumber: number;
   question: string;
   type: string;
-  answer: string | null;
-  score: number | null;
-  feedback: string | null;
-  createdAt: string;
+  answer?: string | null;
+  score?: number | null;
+  feedback?: string | null;
+  createdAt?: string;
 }
 
 export interface InterviewFeedback {
@@ -63,7 +44,7 @@ export interface InterviewDetails {
   duration: number;
   startedAt: string;
   endedAt: string | null;
-  status: "ACTIVE" | "COMPLETED" | "CANCELLED";
+  status: "ACTIVE" | "COMPLETED" | "CANCELLED" | "FAILED";
   overallScore: number | null;
   feedback: InterviewFeedback | null;
   createdAt: string;
@@ -71,48 +52,11 @@ export interface InterviewDetails {
   questions: InterviewQuestion[];
 }
 
-export async function getInterviewDetails(
-  interviewId: number,
-): Promise<InterviewDetails> {
-  const token = useAuthStore.getState().token;
-
-  const response = await fetch(`${API_URL}/${interviewId}`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to fetch interview details");
-  }
-
-  return data.interview;
-}
-
-function getAuthHeaders() {
-  const token = useAuthStore.getState().token;
-
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-}
-
 export interface StartInterviewData {
   role: string;
   difficulty: string;
   interviewType: string;
   duration: number;
-}
-
-export interface InterviewQuestion {
-  id: number;
-  questionNumber: number;
-  question: string;
-  type: string;
 }
 
 export interface StartInterviewResponse {
@@ -140,6 +84,66 @@ export interface SubmitAnswerResponse {
   question?: InterviewQuestion;
 }
 
+export interface EndInterviewResponse {
+  message: string;
+  interview: {
+    id: number;
+    status: string;
+    endedAt: string;
+    overallScore: number | null;
+  };
+  evaluation: unknown;
+}
+
+function getAuthHeaders() {
+  const token = useAuthStore.getState().token;
+
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+export async function getInterviewHistory(): Promise<InterviewHistoryItem[]> {
+  const token = useAuthStore.getState().token;
+
+  const response = await fetch(`${API_URL}/history`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to fetch interview history");
+  }
+
+  return data.interviews;
+}
+
+export async function getInterviewDetails(
+  interviewId: number,
+): Promise<InterviewDetails> {
+  const token = useAuthStore.getState().token;
+
+  const response = await fetch(`${API_URL}/${interviewId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to fetch interview details");
+  }
+
+  return data.interview;
+}
+
 export async function startInterview(
   data: StartInterviewData,
 ): Promise<StartInterviewResponse> {
@@ -161,17 +165,40 @@ export async function startInterview(
 export async function submitInterviewAnswer(
   interviewId: number,
   answer: string,
+  remainingSeconds: number,
 ): Promise<SubmitAnswerResponse> {
   const response = await fetch(`${API_URL}/${interviewId}/answer`, {
     method: "POST",
     headers: getAuthHeaders(),
-    body: JSON.stringify({ answer }),
+    body: JSON.stringify({
+      answer,
+      remainingSeconds,
+    }),
   });
 
   const result = await response.json();
 
   if (!response.ok) {
     throw new Error(result.message || "Failed to submit answer");
+  }
+
+  return result;
+}
+
+export async function endInterview(
+  interviewId: number,
+): Promise<EndInterviewResponse> {
+  const response = await fetch(`${API_URL}/${interviewId}/end`, {
+    method: "POST",
+    headers: getAuthHeaders(),
+  });
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result.error || result.message || "Failed to end interview",
+    );
   }
 
   return result;
@@ -186,7 +213,9 @@ export async function evaluateInterview(interviewId: number) {
   const result = await response.json();
 
   if (!response.ok) {
-    throw new Error(result.message || "Failed to evaluate interview");
+    throw new Error(
+      result.error || result.message || "Failed to evaluate interview",
+    );
   }
 
   return result;
