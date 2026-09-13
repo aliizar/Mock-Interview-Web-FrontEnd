@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-    Target,
-    FileCheck,
-    Flame,
-    Trophy
+    Focus,
+    FileCheck2,
+    Zap,
+    Award
 } from "lucide-react";
 
 import StatCard from "./StatCard";
@@ -52,7 +52,7 @@ export default function StatsSection() {
                         dashboardStats.overallScore.improvement
                     )}% from last week`
                     : "No data last week",
-            icon: Target,
+            icon: Focus,
             color: "bg-indigo-500"
         },
         {
@@ -67,7 +67,7 @@ export default function StatsSection() {
             description:
                 dashboardStats?.lastInterview?.role ||
                 "No interview yet",
-            icon: FileCheck,
+            icon: FileCheck2,
             color: "bg-emerald-500"
         },
         {
@@ -78,8 +78,8 @@ export default function StatsSection() {
                     : "Days"
                 }`
                 : "--",
-            description: "Keep going 🔥",
-            icon: Flame,
+            description: "Keep going..",
+            icon: Zap,
             color: "bg-orange-500"
         },
         {
@@ -88,7 +88,7 @@ export default function StatsSection() {
                 ? `${dashboardStats.practiceGoal.completed}/${dashboardStats.practiceGoal.target}`
                 : "--",
             description: "Interviews completed",
-            icon: Trophy,
+            icon: Award,
             color: "bg-purple-500"
         }
     ];
