@@ -22,11 +22,65 @@ import {
 
 } from "../api/chatbot.api";
 import type { ChatConversation } from "../api/chatbot.api";
+import ReactMarkdown from "react-markdown";
+import type { Components } from "react-markdown";
 interface Message {
     id: string;
     role: "USER" | "ASSISTANT";
     content: string;
 }
+const markdownComponents: Components = {
+    h1: ({ children }) => (
+        <h1 className="mb-3 text-lg font-bold text-white">
+            {children}
+        </h1>
+    ),
+
+    h2: ({ children }) => (
+        <h2 className="mb-2 mt-4 text-base font-semibold text-white">
+            {children}
+        </h2>
+    ),
+
+    h3: ({ children }) => (
+        <h3 className="mb-2 mt-3 text-sm font-semibold text-white">
+            {children}
+        </h3>
+    ),
+
+    p: ({ children }) => (
+        <p className="mb-3 last:mb-0">
+            {children}
+        </p>
+    ),
+
+    ul: ({ children }) => (
+        <ul className="mb-3 list-disc space-y-1 pl-5">
+            {children}
+        </ul>
+    ),
+
+    ol: ({ children }) => (
+        <ol className="mb-3 list-decimal space-y-1 pl-5">
+            {children}
+        </ol>
+    ),
+
+    li: ({ children }) => <li>{children}</li>,
+
+    strong: ({ children }) => (
+        <strong className="font-semibold text-white">
+            {children}
+        </strong>
+    ),
+
+    code: ({ children }) => (
+        <code className="rounded bg-slate-800 px-1.5 py-0.5 text-xs text-indigo-300">
+            {children}
+        </code>
+    ),
+};
+
 
 export default function AICoach() {
     const [conversations, setConversations] = useState<ChatConversation[]>([]);
@@ -542,8 +596,8 @@ export default function AICoach() {
                                                             : "rounded-bl-md border border-slate-800 bg-slate-900 text-slate-300"
                                                             }`}
                                                     >
-                                                        <div className="whitespace-pre-wrap break-words">
-                                                            {message.content}
+                                                        <div className="break-words">
+                                                            <ReactMarkdown components={markdownComponents}>{message.content}</ReactMarkdown>
                                                         </div>
                                                     </div>
                                                 </div>
